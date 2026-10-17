@@ -13,9 +13,10 @@
             [clojure.edn :as edn]
             [clojure.main :as m])
   (:import
-   [clojure.lang LineNumberingPushbackReader]
+   [clojure.lang LineNumberingPushbackReader DynamicClassLoader]
    [java.net InetAddress Socket ServerSocket SocketException]
    [java.io Reader Writer PrintWriter BufferedWriter BufferedReader InputStreamReader OutputStreamWriter]
+   [java.util Properties]
    [java.util.concurrent.locks ReentrantLock]))
 
 (set! *warn-on-reflection* true)
@@ -145,14 +146,16 @@
 
 (defn- parse-props
   "Parse clojure.server.* from properties to produce a map of server configs."
-  [props]
+  [^Properties props]
   (reduce
-    (fn [acc [^String k ^String v]]
-      (let [[k1 k2 k3] (str/split k #"\.")]
-        (if (and (= k1 "clojure") (= k2 "server"))
-          (conj acc (merge {:name k3} (edn/read-string v)))
-          acc)))
-    [] props))
+   (fn [acc ^String k]
+     (let [[k1 k2 k3] (str/split k #"\.")]
+       (if (and (= k1 "clojure") (= k2 "server"))
+         (let [v (get props k)]
+           (conj acc (merge {:name k3} (edn/read-string v))))
+         acc)))
+   []
+   (.stringPropertyNames props)))
 
 (defn start-servers
   "Start all servers specified in the system properties."
@@ -215,13 +218,16 @@
   Alpha, subject to change."
   {:added "1.10"}
   [in-reader out-fn & {:keys [stdin]}]
+  (let [cl (.getContextClassLoader (Thread/currentThread))]
+    (.setContextClassLoader (Thread/currentThread) (DynamicClassLoader. cl)))
   (let [EOF (Object.)
         tapfn #(out-fn {:tag :tap :val %1})]
     (m/with-bindings
       (in-ns 'user)
-      (binding [*in* (or stdin in-reader)
-                *out* (PrintWriter-on #(out-fn {:tag :out :val %1}) nil)
-                *err* (PrintWriter-on #(out-fn {:tag :err :val %1}) nil)]
+      (binding [*repl* true
+                *in* (or stdin in-reader)
+                *out* (PrintWriter-on #(out-fn {:tag :out :val %1}) nil true)
+                *err* (PrintWriter-on #(out-fn {:tag :err :val %1}) nil true)]
         (try
           (add-tap tapfn)
           (loop []

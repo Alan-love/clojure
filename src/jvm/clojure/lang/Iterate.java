@@ -12,6 +12,8 @@ package clojure.lang;
 
 /* Alex Miller, Dec 5, 2014 */
 
+import java.io.IOException;
+
 public class Iterate extends ASeq implements IReduce, IPending {
 
 private static final long serialVersionUID = -78221705247226450L;
@@ -86,4 +88,23 @@ public Object reduce(IFn rf, Object start){
         v = f.invoke(v);
     }
 }
+
+public int hashCode(){
+    throw new UnsupportedOperationException();
+}
+
+public int hasheq(){
+    throw new UnsupportedOperationException();
+}
+
+// serialization not supported
+private void writeObject(java.io.ObjectOutputStream out) throws IOException {
+    throw new UnsupportedOperationException();
+}
+
+// deserialization not supported
+private void readObject(java.io.ObjectInputStream in) throws IOException, ClassNotFoundException {
+    throw new UnsupportedOperationException();
+}
+
 }

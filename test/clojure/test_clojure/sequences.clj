@@ -413,6 +413,49 @@
     (next (to-array [(into-array []) nil])) '(nil)
     (next (to-array [(into-array []) 2 nil])) '(2 nil) ))
 
+(deftest test-nthnext+rest-on-0
+  (are [coll]
+       (and (= (seq coll) (nthnext coll 0))
+            (= coll       (nthrest coll 0)))
+    nil
+    ""
+    ()
+    '(0)
+    []
+    [0]
+    #{}
+    {}
+    {:a 1}
+    (range 5)))
+
+(deftest test-nthnext+rest-on-pos
+  (are [coll n nthnext-expected nthrest-expected]
+       (and (= nthnext-expected (nthnext coll n))
+            (= nthrest-expected (nthrest coll n)))
+
+    ;coll  n  nthnext  nthrest
+    nil    1  nil      ()
+    "abc"  1  '(\b \c) '(\b \c)
+    "abc"  3  nil      ()
+    "abc"  4  nil      ()
+    ()     1  nil      ()
+    '(1)   1  nil      ()
+    '(1)   2  nil      ()
+    '(())  1  nil      ()
+    #{}    1  nil      ()
+    {:a 1} 1  nil      ()
+    []     1  nil      ()
+    [0]    1  nil      ()
+    [0]    2  nil      ()
+    [[] 2 nil] 1 '(2 nil) '(2 nil)
+    [[] 2 nil] 2 '(nil) '(nil)
+    [[] 2 nil] 3 nil ()
+    (sorted-set 1 2 3)     2 '(3)      '(3)
+    (sorted-map :a 1 :b 2) 1 '([:b 2]) '([:b 2])
+    (into-array [])        1 nil       ()
+    (into-array [1])       1 nil       ()
+    (range 5)              3 '(3 4)    '(3 4)
+    (range 5)              5 nil       ()))
 
 (deftest test-last
   (are [x y] (= x y)
@@ -855,7 +898,9 @@
 
     (take 0 [1 2 3 4 5]) ()
     (take -1 [1 2 3 4 5]) ()
-    (take -2 [1 2 3 4 5]) () ))
+    (take -2 [1 2 3 4 5]) ()
+
+    (take 1/4 [1 2 3 4 5]) '(1) ))
 
 
 (deftest test-drop
@@ -867,8 +912,52 @@
 
     (drop 0 [1 2 3 4 5]) '(1 2 3 4 5)
     (drop -1 [1 2 3 4 5]) '(1 2 3 4 5)
-    (drop -2 [1 2 3 4 5]) '(1 2 3 4 5) ))
+    (drop -2 [1 2 3 4 5]) '(1 2 3 4 5)
 
+    (drop 1/4 [1 2 3 4 5]) '(2 3 4 5) )
+
+  (are [coll] (= (drop 4 coll) (drop -2 (drop 4 coll)))
+    [0 1 2 3 4 5]
+    (seq [0 1 2 3 4 5])
+    (range 6)
+    (repeat 6 :x))
+  )
+
+(deftest test-nthrest
+  (are [x y] (= x y)
+    (nthrest [1 2 3 4 5] 1) '(2 3 4 5)
+    (nthrest [1 2 3 4 5] 3) '(4 5)
+    (nthrest [1 2 3 4 5] 5) ()
+    (nthrest [1 2 3 4 5] 9) ()
+
+    (nthrest [1 2 3 4 5] 0) '(1 2 3 4 5)
+    (nthrest [1 2 3 4 5] -1) '(1 2 3 4 5)
+    (nthrest [1 2 3 4 5] -2) '(1 2 3 4 5)
+
+    (nthrest [1 2 3 4 5] 1/4) '(2 3 4 5)
+    (nthrest [1 2 3 4 5] 1.2) '(3 4 5) )
+
+  ;; (nthrest coll 0) should return coll
+  (are [coll] (let [r (nthrest coll 0)] (and (= coll r) (= (class coll) (class r))))
+    [1 2 3]
+    (seq [1 2 3])
+    (range 10)
+    (repeat 10 :x)
+    (seq "abc") ))
+
+(deftest test-nthnext
+  (are [x y] (= x y)
+    (nthnext [1 2 3 4 5] 1) '(2 3 4 5)
+    (nthnext [1 2 3 4 5] 3) '(4 5)
+    (nthnext [1 2 3 4 5] 5) nil
+    (nthnext [1 2 3 4 5] 9) nil
+
+    (nthnext [1 2 3 4 5] 0) '(1 2 3 4 5)
+    (nthnext [1 2 3 4 5] -1) '(1 2 3 4 5)
+    (nthnext [1 2 3 4 5] -2) '(1 2 3 4 5)
+
+    (nthnext [1 2 3 4 5] 1/4) '(2 3 4 5)
+    (nthnext [1 2 3 4 5] 1.2) '(3 4 5) ))
 
 (deftest test-take-nth
   (are [x y] (= x y)
@@ -1540,6 +1629,16 @@
     (range 0)   0 100
     (range 1 2) 1 101
     (range 1 3) 3 103))
+
+(deftest infinite-seq-hash
+  (are [e] (thrown? Exception (.hashCode ^Object e))
+    (iterate identity nil)
+    (cycle [1])
+    (repeat 1))
+  (are [e] (thrown? Exception (.hasheq ^clojure.lang.IHashEq e))
+    (iterate identity nil)
+    (cycle [1])
+    (repeat 1)))
 
 (defspec iteration-seq-equals-reduce 1000
   (prop/for-all [initk gen/int

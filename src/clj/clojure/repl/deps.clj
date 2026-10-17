@@ -14,7 +14,7 @@
    [clojure.java.basis.impl :as basis-impl]
    [clojure.tools.deps.interop :as tool])
   (:import
-    [clojure.lang DynamicClassLoader]
+    [clojure.lang DynamicClassLoader RT]
     [java.io File]))
 
 (set! *warn-on-reflection* true)
@@ -22,7 +22,7 @@
 (defn- add-loader-url
   "Add url string or URL to the highest level DynamicClassLoader url set."
   [url]
-  (let [u (if (string? url) (java.net.URL. url) url)
+  (let [u (if (string? url) (RT/toUrl ^String url) url)
         loader (loop [loader (.getContextClassLoader (Thread/currentThread))]
                  (let [parent (.getParent loader)]
                    (if (instance? DynamicClassLoader parent)
@@ -43,14 +43,16 @@
         lib-coords (reduce-kv #(if (contains? current-libs %2) %1 (assoc %1 %2 %3))
                      {} lib-coords)]
     (when-not (empty? lib-coords)
-      (let [procurer (dissoc basis [:basis-config :paths :deps :aliases :argmap :classpath :classpath-roots])
+      (let [procurer (reduce-kv (fn [m k v] (if (contains? #{"mvn" "git" "local"} (namespace k)) (assoc m k v) m)) {} basis)
             tool-args {:existing libs, :add lib-coords, :procurer procurer}
             {:keys [added] :as _res} (tool/invoke-tool {:tool-alias :deps, :fn 'clojure.tools.deps/resolve-added-libs, :args tool-args})
             ;_ (clojure.pprint/pprint _res)
             paths (mapcat :paths (vals added))
-            urls (->> paths (map jio/file) (map #(.toURL ^File %)))]
+            urls (->> paths (map jio/file) (map #(RT/toUrl ^File %)))]
         (run! add-loader-url urls)
         (basis-impl/update-basis! update :libs merge added)
+        ;; reload root *data-readers* from classpath
+        (set! *data-readers* (merge (#'clojure.core/load-data-readers) *data-readers*))
         (let [ret (-> added keys sort vec)]
           (when (seq ret) ret))))))
 
